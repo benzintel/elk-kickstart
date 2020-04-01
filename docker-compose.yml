@@ -1,0 +1,109 @@
+version: "3"
+services:
+  # postgres:
+  #   image: postgres:latest
+  #   container_name: postgres-database
+  #   restart: always
+  #   networks:
+  #     - esnet
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: root
+  #     POSTGRES_PASSWORD: passwordNaja
+  #     POSTGRES_DB: test-naja
+  
+  # redis:
+  #   image: redis:5.0.0
+  #   networks:
+  #     - esnet
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - ./docker-service/redis/redis.conf:/etc/redis/redis.conf
+
+  # Elasticsearch Docker Images: https://www.docker.elastic.co/
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.0
+    container_name: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - esnet
+    
+  logstash:
+    container_name: logstash
+    image: docker.elastic.co/logstash/logstash:7.6.1
+    ports:
+      - 5044:5044
+    volumes:
+      - ./docker-service/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./docker-service/logstash/pipeline:/usr/share/logstash/pipeline
+    networks:
+      - esnet
+    links: 
+      - webserver
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.4.0
+    volumes:
+      - ./docker-service/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - 5601:5601
+    networks:
+      - esnet
+    depends_on:
+      - elasticsearch
+
+  node-service:
+    build: ./
+    container_name: node-service
+    networks:
+      - esnet
+    volumes:
+      - ./:/usr/src/app
+    depends_on:
+      - elasticsearch
+    
+  webserver:
+    build: ./docker-service/nginx
+    container_name: webservice
+    working_dir: /usr/src/app
+    networks:
+      - esnet
+    ports:
+      - "80:80"
+      - "443:443"
+    links:
+      # - postgres
+      - elasticsearch
+      # - redis
+    depends_on:
+      - kibana
+
+volumes:
+  elasticsearch-data:
+    driver: local
+  filebeat:
+
+networks:
+  esnet:
